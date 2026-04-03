@@ -1,40 +1,55 @@
 #!/system/bin/sh
 # Seto_description.sh - Dynamic module description updater
-# Runs as a background loop, updates module.prop description with charging info
-# Restartable by WebUI hot-reload (pkill + relaunch)
-MODDIR=${0%/*}/..
+# Launched by service.sh via system/*.sh glob, or by WebUI hot-reload
+
+SCRIPT_DIR=${0%/*}
+MODDIR=${SCRIPT_DIR%/*}
 
 PERSISTENT_DIR="/data/adb/SetoSkins"
+LOG="$MODDIR/description.log"
+
+log() { echo "$(date '+%H:%M:%S') $1" >> "$LOG"; }
+
+# Clear old log
+echo "" > "$LOG" 2>/dev/null
 
 show_value() {
     local file="$MODDIR/配置.prop"
     [ -f "$PERSISTENT_DIR/配置.prop" ] && file="$PERSISTENT_DIR/配置.prop"
-    grep -E "^$1=" "$file" 2>/dev/null | head -n1 | cut -d'=' -f2
+    grep "^$1=" "$file" 2>/dev/null | head -n1 | cut -d'=' -f2
 }
 
 # Wait for boot
 while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done
 
-# Check if feature is enabled
-if [ "$(show_value '模块简介显示充电信息')" != "true" ]; then
+log "started, MODDIR=$MODDIR"
+log "module.prop exists: $([ -f "$MODDIR/module.prop" ] && echo yes || echo no)"
+log "配置.prop exists: $([ -f "$MODDIR/配置.prop" ] && echo yes || echo no)"
+
+VAL=$(show_value '模块简介显示充电信息')
+log "模块简介显示充电信息=$VAL"
+
+if [ "$VAL" != "true" ]; then
+    log "feature disabled, exiting"
     exit 0
 fi
 
-# Read minus multiplier (current direction)
+log "feature enabled, entering loop"
+
 minus="-1"
 [ -f "$MODDIR/system/minus" ] && minus=$(cat "$MODDIR/system/minus")
 
 while true; do
     sleep 6
 
-    # Read battery data
     status=$(cat /sys/class/power_supply/battery/status 2>/dev/null)
     capacity=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)
-    temp=$(expr $(cat /sys/class/power_supply/battery/temp 2>/dev/null) / 10 2>/dev/null)
-    current=$(expr $(cat /sys/class/power_supply/battery/current_now 2>/dev/null) \* $minus 2>/dev/null)
-    ChargemA=$(expr $(cat /sys/class/power_supply/battery/current_now 2>/dev/null) / -1000 2>/dev/null)
+    raw_temp=$(cat /sys/class/power_supply/battery/temp 2>/dev/null)
+    temp=$((raw_temp / 10))
+    raw_current=$(cat /sys/class/power_supply/battery/current_now 2>/dev/null)
+    current=$((raw_current * minus))
+    ChargemA=$((raw_current / -1000))
 
-    # Determine state
     hint="DisCharging"
     if [ "$status" = "Charging" ]; then
         hint="NormallyCharging"
@@ -42,7 +57,6 @@ while true; do
         [ "$temp" -gt 48 ] 2>/dev/null && hint="HighTemperature"
     fi
 
-    # Update description
     if [ "$capacity" = "100" ]; then
         sed -i "/^description=/c description=[ 😊已充满 温度${temp}℃ 电流${ChargemA}mA ]" "$MODDIR/module.prop"
     elif [ "$hint" = "DisCharging" ]; then
@@ -59,10 +73,11 @@ while true; do
         sed -i "/^description=/c description=[ 🥵太烧了 温度${temp}℃ 电流${ChargemA}mA ] Seto Thermal" "$MODDIR/module.prop"
     fi
 
-    # Re-check config in case user toggled it off via WebUI
-    if [ "$(show_value '模块简介显示充电信息')" != "true" ]; then
-        # Restore default description and exit
+    # Re-check in case user toggled off via WebUI
+    VAL=$(show_value '模块简介显示充电信息')
+    if [ "$VAL" != "true" ]; then
         sed -i "/^description=/c description=Multi-function thermal control for MIUI/HyperOS | Supports Magisk, KernelSU, SukiSU" "$MODDIR/module.prop"
+        log "toggled off, exiting"
         exit 0
     fi
 done
