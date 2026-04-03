@@ -131,48 +131,15 @@ fi
 rm -rf $MODDIR/配置.prop.bak
 rm -rf $MODDIR/nohup.out
 
-if test $(show_value '模块简介显示充电信息') == true; then
-	while true; do
-		sleep 6
-		sh $MODDIR/system/cloud/？.sh
-		rm -rf $MODDIR/配置.prop.bak
-		rm -rf $MODDIR/nohup.out
-		#读取配置文件和系统数据到变量
-		status=$(cat /sys/class/power_supply/battery/status)
-		capacity=$(cat /sys/class/power_supply/battery/capacity)
-		temp=$(expr $(cat /sys/class/power_supply/battery/temp) / 10)
-		minus=$(cat "$MODDIR"/system/minus)
-		current=$(expr $(cat /sys/class/power_supply/battery/current_now) \* $minus)
-		ChargemA=$(expr $(cat /sys/class/power_supply/battery/current_now) / -1000)
-		#判断目前状态
-		hint="DisCharging"
-		if [[ $status == "Charging" ]]; then
-			hint="NormallyCharging"
-			if [[ $current -lt 2000000 ]]; then
-				hint="LowCurrent"
-			fi
-			if [[ $temp -gt 48 ]]; then
-				hint="HighTemperature"
-			fi
-		fi
-		#进行相应操作
-		if [[ $capacity == "100" ]]; then
-			sed -i "/^description=/c description=[ 😊已充满 温度${temp}℃ 电流${ChargemA}mA ]" "$MODDIR/module.prop"
-		elif [[ $hint == "DisCharging" ]]; then
-			sed -i "/^description=/c description=[ 🔋未充电 ] Seto Thermal | 使用WebUI配置 | 48度会撞内核墙强制降流" "$MODDIR/module.prop"
-			setprop ctl.restart mi_thermald
-			setprop ctl.restart thermal
-			echo 1 >/sys/class/thermal/thermal_message/sconfig
-		elif [[ $hint == "NormallyCharging" ]]; then
-			sed -i "/^description=/c description=[ ✅正常充电中 温度${temp}℃ 电流${ChargemA}mA ] Seto Thermal | 使用WebUI配置" "$MODDIR/module.prop"
-		elif [[ $hint == "LowCurrent" ]]; then
-			sed -i "/^description=/c description=[ ⚠️充电缓慢 电量${capacity}% 温度${temp}℃ 电流${ChargemA}mA ] Seto Thermal" "$MODDIR/module.prop"
-			echo '0' >/sys/class/power_supply/usb/input_current_limited
-		elif [[ $hint == "HighTemperature" ]]; then
-			sed -i "/^description=/c description=[ 🥵太烧了 温度${temp}℃ 电流${ChargemA}mA ] Seto Thermal" "$MODDIR/module.prop"
-		fi
-	done
-fi
+# Backup config to persistent storage (survives module updates)
+PERSISTENT_DIR="/data/adb/SetoSkins"
+mkdir -p "$PERSISTENT_DIR"
+cp -f "$MODDIR/配置.prop" "$PERSISTENT_DIR/配置.prop" 2>/dev/null
+[ -f "$MODDIR/黑名单.prop" ] && cp -f "$MODDIR/黑名单.prop" "$PERSISTENT_DIR/黑名单.prop" 2>/dev/null
+
+# Note: Seto_description.sh (charging info display) is launched
+# automatically by the 'for scripts' loop above as system/Seto_description.sh
+
 sleep 60
 # 检测文件是否存在并为空
 if [ -f "$MODDIR/system.prop" ] && [ ! -s "$MODDIR/system.prop" ]; then

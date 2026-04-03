@@ -95,64 +95,20 @@ if [ -d "/data/media/0/Android/备份温控（请勿删除）" ]; then
 fi
 
 ##########################
-# Config Backup/Restore
+# Config Restore (automatic)
 ##########################
-Reserve() {
-    ui_print "- Preserve previous configuration?"
-    ui_print "- (Keeping old config may miss new features)"
-    ui_print "- Volume Up = Keep"
-    ui_print "- Volume Down = Fresh install"
-    key_check
-    case "$keycheck" in
-    "KEY_VOLUMEUP")
-        ui_print "- Preserving configuration"
-        sleep 1
-        # Get the old module path (installed location)
-        OLD_MODPATH="/data/adb/modules/SetoSkins"
-        cp "$OLD_MODPATH/配置.prop" "/data/media/0/Android/备份温控（请勿删除）/配置.prop"
-        cp "$OLD_MODPATH/黑名单.prop" "/data/media/0/Android/备份温控（请勿删除）/黑名单.prop"
-        if [ ! -f "/data/media/0/Android/备份温控（请勿删除）/配置.prop" ]; then
-            ui_print "—————————————————————————"
-            ui_print "- Writing config backup, please wait..."
-            ui_print "—————————————————————————"
-            for i in $(seq 1 60); do
-                sleep 1
-                if [ ! -f "/data/media/0/Android/备份温控（请勿删除）/配置.prop" ]; then
-                    cp "$OLD_MODPATH/配置.prop" "/data/media/0/Android/备份温控（请勿删除）/配置.prop"
-                    if [ -f "/data/media/0/Android/备份温控（请勿删除）/配置.prop" ]; then
-                        break
-                    fi
-                fi
-            done
-        fi
-        if [ ! -f "/data/media/0/Android/备份温控（请勿删除）/黑名单.prop" ]; then
-            ui_print "—————————————————————————"
-            ui_print "- Writing blocklist backup, please wait..."
-            ui_print "—————————————————————————"
-            for i in $(seq 1 60); do
-                sleep 1
-                if [ ! -f "/data/media/0/Android/备份温控（请勿删除）/黑名单.prop" ]; then
-                    cp "$OLD_MODPATH/黑名单.prop" "/data/media/0/Android/备份温控（请勿删除）/黑名单.prop"
-                    if [ -f "/data/media/0/Android/备份温控（请勿删除）/黑名单.prop" ] || [ ! -f "$OLD_MODPATH/黑名单.prop" ]; then
-                        break
-                    fi
-                fi
-            done
-        fi
-        ;;
-    *)
-        ui_print "- Fresh install"
-        sleep 1
-        ui_print "—————————————————————————"
-        ;;
-    esac
-}
+PERSISTENT_DIR="/data/adb/SetoSkins"
 
-if [ -d "/data/media/0/Android/备份温控（请勿删除）" ]; then
-    ui_print "- Found thermal backup, detected as module update"
-    Reserve
+if [ -f "$PERSISTENT_DIR/配置.prop" ]; then
+    ui_print "- Found saved config, restoring automatically"
+    cp -f "$PERSISTENT_DIR/配置.prop" "$MODPATH/配置.prop"
+    [ -f "$PERSISTENT_DIR/黑名单.prop" ] && cp -f "$PERSISTENT_DIR/黑名单.prop" "$MODPATH/黑名单.prop"
+    ui_print "- Config restored from /data/adb/SetoSkins/"
 else
+    ui_print "- First install, using default config"
     identify
+    # Create persistent dir for future updates
+    mkdir -p "$PERSISTENT_DIR"
 fi
 
 ui_print "—————————————————————————"

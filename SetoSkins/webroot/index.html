@@ -1078,7 +1078,11 @@ async function saveAndApply() {
     const content = serializeConfig(configData);
     // Escape for shell: use base64 to avoid escaping issues
     const b64 = btoa(unescape(encodeURIComponent(content)));
-    const writeCmd = 'echo "' + b64 + '" | base64 -d > "' + modDir + '/配置.prop"';
+
+    // Write to module dir AND persistent dir (survives updates)
+    const writeCmd = 'echo "' + b64 + '" | base64 -d > "' + modDir + '/配置.prop" && ' +
+      'mkdir -p /data/adb/SetoSkins && ' +
+      'echo "' + b64 + '" | base64 -d > /data/adb/SetoSkins/配置.prop';
     const r = await execCmd(writeCmd);
     if (r.errno !== 0) {
       showToast(t("msg.save_fail"), true);
@@ -1086,11 +1090,13 @@ async function saveAndApply() {
       return;
     }
 
-    // Hot-reload: kill existing thermal script and restart
+    // Hot-reload: kill and restart all module scripts
     await execCmd(
       'pkill -f Seto_fuckthermal 2>/dev/null; ' +
+      'pkill -f Seto_description 2>/dev/null; ' +
       'sleep 0.5; ' +
-      'nohup /system/bin/sh "' + modDir + '/system/Seto_fuckthermal.sh" >/dev/null 2>&1 &'
+      'nohup /system/bin/sh "' + modDir + '/system/Seto_fuckthermal.sh" >/dev/null 2>&1 &; ' +
+      'nohup /system/bin/sh "' + modDir + '/system/Seto_description.sh" >/dev/null 2>&1 &'
     );
 
     // Restart thermal daemons
