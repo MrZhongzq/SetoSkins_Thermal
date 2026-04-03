@@ -6,12 +6,6 @@ SCRIPT_DIR=${0%/*}
 MODDIR=${SCRIPT_DIR%/*}
 
 PERSISTENT_DIR="/data/adb/SetoSkins"
-LOG="$MODDIR/description.log"
-
-log() { echo "$(date '+%H:%M:%S') $1" >> "$LOG"; }
-
-# Clear old log
-echo "" > "$LOG" 2>/dev/null
 
 show_value() {
     local file="$MODDIR/配置.prop"
@@ -22,19 +16,10 @@ show_value() {
 # Wait for boot
 while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done
 
-log "started, MODDIR=$MODDIR"
-log "module.prop exists: $([ -f "$MODDIR/module.prop" ] && echo yes || echo no)"
-log "配置.prop exists: $([ -f "$MODDIR/配置.prop" ] && echo yes || echo no)"
-
-VAL=$(show_value '模块简介显示充电信息')
-log "模块简介显示充电信息=$VAL"
-
-if [ "$VAL" != "true" ]; then
-    log "feature disabled, exiting"
+# Check if feature is enabled
+if [ "$(show_value '模块简介显示充电信息')" != "true" ]; then
     exit 0
 fi
-
-log "feature enabled, entering loop"
 
 minus="-1"
 [ -f "$MODDIR/system/minus" ] && minus=$(cat "$MODDIR/system/minus")
@@ -77,7 +62,6 @@ while true; do
     VAL=$(show_value '模块简介显示充电信息')
     if [ "$VAL" != "true" ]; then
         sed -i "/^description=/c description=Multi-function thermal control for MIUI/HyperOS | Supports Magisk, KernelSU, SukiSU" "$MODDIR/module.prop"
-        log "toggled off, exiting"
         exit 0
     fi
 done
