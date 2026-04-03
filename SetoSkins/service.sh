@@ -45,7 +45,8 @@ show_value() {
 	file=$MODDIR/配置.prop
 	cat "${file}" | grep -E "(^$value=)" | sed '/^#/d;/^[[:space:]]*$/d;s/.*=//g' | sed 's/，/,/g;s/——/-/g;s/：/:/g' | head -n 1
 }
-cp "$MODDIR/system/cloud/module.prop" "$MODDIR/module.prop"
+# Restore base module.prop if cloud version exists (for description update loop)
+[ -f "$MODDIR/system/cloud/module.prop" ] && cp "$MODDIR/system/cloud/module.prop" "$MODDIR/module.prop"
 echo 0 >/data/vendor/thermal/thermal-global-mode
 echo 1 >/sys/class/power_supply/battery/battery_charging_enabled
 echo Good >/sys/class/power_supply/battery/health
@@ -156,19 +157,19 @@ if test $(show_value '模块简介显示充电信息') == true; then
 		fi
 		#进行相应操作
 		if [[ $capacity == "100" ]]; then
-			sed -i "/^description=/c description=[ 😊已充满 温度$temp℃ 电流$ChargemA"mA" ]" "$MODDIR/module.prop"
+			sed -i "/^description=/c description=[ 😊已充满 温度${temp}℃ 电流${ChargemA}mA ]" "$MODDIR/module.prop"
 		elif [[ $hint == "DisCharging" ]]; then
-			sed -i "/^description=/c description=[ 🔋未充电 ] Seto Thermal | Use WebUI to configure | 48°C kernel wall" "$MODDIR/module.prop"
+			sed -i "/^description=/c description=[ 🔋未充电 ] Seto Thermal | 使用WebUI配置 | 48度会撞内核墙强制降流" "$MODDIR/module.prop"
 			setprop ctl.restart mi_thermald
 			setprop ctl.restart thermal
 			echo 1 >/sys/class/thermal/thermal_message/sconfig
 		elif [[ $hint == "NormallyCharging" ]]; then
-			sed -i "/^description=/c description=[ ✅Charging $temp℃ $ChargemA mA ] Seto Thermal | WebUI config" "$MODDIR/module.prop"
+			sed -i "/^description=/c description=[ ✅正常充电中 温度${temp}℃ 电流${ChargemA}mA ] Seto Thermal | 使用WebUI配置" "$MODDIR/module.prop"
 		elif [[ $hint == "LowCurrent" ]]; then
-			sed -i "/^description=/c description=[ ⚠️ Slow $capacity% $temp℃ $ChargemA mA ] Seto Thermal | WebUI config" "$MODDIR/module.prop"
+			sed -i "/^description=/c description=[ ⚠️充电缓慢 电量${capacity}% 温度${temp}℃ 电流${ChargemA}mA ] Seto Thermal" "$MODDIR/module.prop"
 			echo '0' >/sys/class/power_supply/usb/input_current_limited
 		elif [[ $hint == "HighTemperature" ]]; then
-			sed -i "/^description=/c description=[ 🥵 Hot! $temp℃ $ChargemA mA ] Seto Thermal | WebUI config" "$MODDIR/module.prop"
+			sed -i "/^description=/c description=[ 🥵太烧了 温度${temp}℃ 电流${ChargemA}mA ] Seto Thermal" "$MODDIR/module.prop"
 		fi
 	done
 fi

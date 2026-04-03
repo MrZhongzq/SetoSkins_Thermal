@@ -1,48 +1,61 @@
 #!/system/bin/sh
 MODDIR=${0%/*}
+MODULE_ID="SetoSkins"
 
-# Detect root manager
-if [ -n "$KSU" ] || [ -d /data/adb/ksu ]; then
-    # KernelSU / SukiSU: WebUI is handled natively by the manager
-    # This action.sh is a fallback - open in browser
-    echo "Opening WebUI..."
-    HTTPD_PORT=18735
-    pkill -f "httpd.*${HTTPD_PORT}" 2>/dev/null
-    sleep 0.3
-    export MODDIR
-    busybox httpd -p 127.0.0.1:${HTTPD_PORT} -h "$MODDIR/webroot" -c "$MODDIR/webroot/httpd.conf" 2>/dev/null
-    am start -a android.intent.action.VIEW -d "http://127.0.0.1:${HTTPD_PORT}" >/dev/null 2>&1
-    echo "WebUI: http://127.0.0.1:${HTTPD_PORT}"
+# KernelSU / SukiSU / APatch: WebUI is handled natively by the manager
+# This action.sh is primarily for Magisk environments
+
+# If running under Magisk, try to launch WebUI standalone apps
+if [ -n "$MAGISKTMP" ] || [ -z "$KSU" ]; then
+    # Try KSU WebUI Standalone
+    pm path io.github.a13e300.ksuwebui > /dev/null 2>&1 && {
+        echo "- Launching WebUI in KSU WebUI Standalone..."
+        am start -n "io.github.a13e300.ksuwebui/.WebUIActivity" \
+            -e id "$MODULE_ID" \
+            -e name "Seto Thermal" > /dev/null 2>&1
+        exit 0
+    }
+
+    # Try WebUI X (MMRL)
+    pm path com.dergoogler.mmrl.wx > /dev/null 2>&1 && {
+        echo "- Launching WebUI in WebUI X..."
+        am start -n "com.dergoogler.mmrl.wx/.ui.activity.webui.WebUIActivity" \
+            -e MOD_ID "$MODULE_ID" > /dev/null 2>&1
+        exit 0
+    }
+
+    # Try WebUI X Portable
+    pm path com.dergoogler.mmrl.webuix > /dev/null 2>&1 && {
+        echo "- Launching WebUI in WebUI X Portable..."
+        am start -n "com.dergoogler.mmrl.webuix/.ui.activity.webui.WebUIActivity" \
+            -e MOD_ID "$MODULE_ID" > /dev/null 2>&1
+        exit 0
+    }
+
+    # No WebUI app found - show text-based status
+    echo "================================================"
+    echo "  Seto Thermal - Module Status"
+    echo "================================================"
+    echo ""
+    echo "  No WebUI app found."
+    echo "  Install one of the following to use WebUI:"
+    echo "  - KSU WebUI Standalone"
+    echo "  - WebUI X (MMRL)"
+    echo ""
+    echo "  Current battery status:"
+    temp=$(cat /sys/class/power_supply/battery/temp 2>/dev/null)
+    current=$(cat /sys/class/power_supply/battery/current_now 2>/dev/null)
+    capacity=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)
+    status=$(cat /sys/class/power_supply/battery/status 2>/dev/null)
+    [ -n "$temp" ] && echo "  Temperature: $(expr $temp / 10)°C"
+    [ -n "$current" ] && echo "  Current: $(expr $current / -1000) mA"
+    [ -n "$capacity" ] && echo "  Battery: ${capacity}%"
+    [ -n "$status" ] && echo "  Status: $status"
+    echo ""
+    echo "  Config: $MODDIR/配置.prop"
+    echo "================================================"
 else
-    # Magisk: Start HTTP server and open browser
-    HTTPD_PORT=18735
-
-    # Kill any existing instance
-    pkill -f "httpd.*${HTTPD_PORT}" 2>/dev/null
-    sleep 0.3
-
-    # Export MODDIR for CGI scripts
-    export MODDIR
-
-    # Ensure CGI script is executable
-    chmod 755 "$MODDIR/webroot/cgi-bin/api.sh" 2>/dev/null
-
-    # Start busybox httpd with CGI support
-    busybox httpd -p 127.0.0.1:${HTTPD_PORT} -h "$MODDIR/webroot" -c "$MODDIR/webroot/httpd.conf" 2>/dev/null
-
-    if [ $? -eq 0 ]; then
-        # Open browser
-        am start -a android.intent.action.VIEW -d "http://127.0.0.1:${HTTPD_PORT}" >/dev/null 2>&1
-        echo "Seto Thermal WebUI opened"
-        echo "URL: http://127.0.0.1:${HTTPD_PORT}"
-        echo ""
-        echo "The web server will auto-stop in 30 minutes."
-        echo "To stop manually: pkill -f 'httpd.*${HTTPD_PORT}'"
-
-        # Auto-stop after 30 minutes
-        (sleep 1800 && pkill -f "httpd.*${HTTPD_PORT}") &
-    else
-        echo "Failed to start HTTP server."
-        echo "Make sure busybox httpd is available."
-    fi
+    # KSU/APatch environment but action.sh was called
+    # (shouldn't normally happen - WebUI button is separate)
+    echo "- Use the WebUI button in your manager app."
 fi
