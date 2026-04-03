@@ -24,7 +24,7 @@ jobs:
           rm -rf $GITHUB_WORKSPACE/${{ env.ModuleFolderName }}/工口本
           rm -rf $GITHUB_WORKSPACE/${{ env.ModuleFolderName }}/system/SetoFastCharge.orig
           # Set executable permissions
-          chmod 755 action.sh webroot/cgi-bin/api.sh system/SetoFastCharge
+          chmod 755 action.sh system/SetoFastCharge
           zip -q -r SetoSkins_Thermal.zip *
           mv $GITHUB_WORKSPACE/${{ env.ModuleFolderName }}/SetoSkins_Thermal.zip "$GITHUB_WORKSPACE"/GithubRelease/SetoSkins_Thermal.zip
           cd "$GITHUB_WORKSPACE"
