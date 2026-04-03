@@ -1,0 +1,137 @@
+name: Promote Release
+on:
+  workflow_dispatch:
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: 1. Find latest pre-release
+        run: |
+          # Get the latest pre-release tag and asset URL
+          LATEST_PRE=$(gh release list --limit 20 --json tagName,isPrerelease,assets \
+            | jq -r '[.[] | select(.isPrerelease == true)] | first')
+
+          if [ "$LATEST_PRE" = "null" ] || [ -z "$LATEST_PRE" ]; then
+            echo "::error::No pre-release found. Run a build first."
+            exit 1
+          fi
+
+          PRE_TAG=$(echo "$LATEST_PRE" | jq -r '.tagName')
+          ASSET_URL=$(echo "$LATEST_PRE" | jq -r '.assets[0].url')
+          ASSET_NAME=$(echo "$LATEST_PRE" | jq -r '.assets[0].name')
+          echo "pre_tag=${PRE_TAG}" >> $GITHUB_ENV
+          echo "asset_name=${ASSET_NAME}" >> $GITHUB_ENV
+          echo "Found pre-release: ${PRE_TAG} (${ASSET_NAME})"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: 2. Calculate next version
+        run: |
+          # Read current version from SetoSkins.json (e.g. "Z2.0")
+          CURRENT_VERSION=$(jq -r .version SetoSkins.json)
+          CURRENT_CODE=$(jq -r .versionCode SetoSkins.json)
+
+          # Parse: prefix (Z), major (2), minor (0)
+          PREFIX=$(echo "$CURRENT_VERSION" | grep -oP '^[A-Za-z]+')
+          MAJOR=$(echo "$CURRENT_VERSION" | grep -oP '[0-9]+' | head -1)
+          MINOR=$(echo "$CURRENT_VERSION" | grep -oP '\.[0-9]+$' | tr -d '.')
+
+          # Bump minor version
+          NEW_MINOR=$((MINOR + 1))
+          NEW_VERSION="${PREFIX}${MAJOR}.${NEW_MINOR}"
+          NEW_CODE=$((CURRENT_CODE + 1))
+
+          echo "current_version=${CURRENT_VERSION}" >> $GITHUB_ENV
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_ENV
+          echo "new_code=${NEW_CODE}" >> $GITHUB_ENV
+          echo "Version: ${CURRENT_VERSION} -> ${NEW_VERSION} (code: ${CURRENT_CODE} -> ${NEW_CODE})"
+
+      - name: 3. Download pre-release artifact
+        run: |
+          mkdir -p release_assets
+          gh release download "${{ env.pre_tag }}" -D release_assets
+          ls -la release_assets/
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: 4. Publish stable release
+        uses: ncipollo/release-action@main
+        with:
+          artifacts: release_assets/*
+          name: "Seto Thermal ${{ env.new_version }}"
+          tag: "${{ env.new_version }}"
+          body: |
+            ## Seto Thermal ${{ env.new_version }}
+
+            Promoted from pre-release `${{ env.pre_tag }}`.
+
+            ### Features
+            - Magisk / KernelSU / SukiSU support
+            - WebUI configuration (no reboot needed)
+            - 10-language support
+            - HyperOS 3.0 compatible
+
+            ### Install
+            Flash the zip in your root manager (Magisk/KSU/SukiSU).
+            For WebUI on Magisk, install [KSU WebUI Standalone](https://github.com/5ec1cff/KsuWebUIStandalone).
+          prerelease: false
+          makeLatest: true
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+
+      - name: 5. Update SetoSkins.json
+        run: |
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          git config --global user.name "${{ github.actor }}"
+
+          OWNER="${{ github.repository_owner }}"
+          REPO="SetoSkins_Thermal"
+
+          # Get the download URL of the new release
+          DOWNLOAD_URL=$(gh release view "${{ env.new_version }}" --json assets \
+            | jq -r '.assets[0].url')
+
+          # Update SetoSkins.json
+          cat > SetoSkins.json << EJSON
+          {
+            "version": "${{ env.new_version }}",
+            "versionCode": ${{ env.new_code }},
+            "zipUrl": "${DOWNLOAD_URL}",
+            "changelog": "https://raw.githubusercontent.com/${OWNER}/${REPO}/master/SetoSkins.md"
+          }
+          EJSON
+          # Fix indentation
+          jq . SetoSkins.json > tmp.json && mv tmp.json SetoSkins.json
+
+          git add SetoSkins.json
+          if git commit -m "release: ${{ env.new_version }}"; then
+            echo "push=true" >> $GITHUB_ENV
+          else
+            echo "push=false" >> $GITHUB_ENV
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - if: ${{ env.push == 'true' }}
+        name: 6. Push updated JSON
+        uses: ad-m/github-push-action@master
+        with:
+          branch: ${{ github.ref }}
+
+      - name: 7. Clean up old pre-releases
+        run: |
+          # Delete pre-releases older than the one we just promoted
+          gh release list --limit 50 --json tagName,isPrerelease \
+            | jq -r '.[] | select(.isPrerelease == true) | .tagName' \
+            | while read tag; do
+                echo "Deleting old pre-release: $tag"
+                gh release delete "$tag" --yes 2>/dev/null || true
+                git push origin --delete "refs/tags/$tag" 2>/dev/null || true
+              done
+        env:
+          GH_TOKEN: ${{ github.token }}
