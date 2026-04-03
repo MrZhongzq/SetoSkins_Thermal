@@ -12,41 +12,34 @@ jobs:
 
       - name: 1. Find latest pre-release
         run: |
-          # Get the latest pre-release tag and asset URL
-          LATEST_PRE=$(gh release list --limit 20 --json tagName,isPrerelease,assets \
-            | jq -r '[.[] | select(.isPrerelease == true)] | first')
+          # Get the latest pre-release tag
+          PRE_TAG=$(gh release list --limit 20 --json tagName,isPrerelease \
+            | jq -r '[.[] | select(.isPrerelease == true)][0].tagName')
 
-          if [ "$LATEST_PRE" = "null" ] || [ -z "$LATEST_PRE" ]; then
+          if [ "$PRE_TAG" = "null" ] || [ -z "$PRE_TAG" ]; then
             echo "::error::No pre-release found. Run a build first."
             exit 1
           fi
 
-          PRE_TAG=$(echo "$LATEST_PRE" | jq -r '.tagName')
-          ASSET_URL=$(echo "$LATEST_PRE" | jq -r '.assets[0].url')
-          ASSET_NAME=$(echo "$LATEST_PRE" | jq -r '.assets[0].name')
           echo "pre_tag=${PRE_TAG}" >> $GITHUB_ENV
-          echo "asset_name=${ASSET_NAME}" >> $GITHUB_ENV
-          echo "Found pre-release: ${PRE_TAG} (${ASSET_NAME})"
+          echo "Found pre-release: ${PRE_TAG}"
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: 2. Calculate next version
         run: |
-          # Read current version from SetoSkins.json (e.g. "Z2.0")
           CURRENT_VERSION=$(jq -r .version SetoSkins.json)
           CURRENT_CODE=$(jq -r .versionCode SetoSkins.json)
 
           # Parse: prefix (Z), major (2), minor (0)
-          PREFIX=$(echo "$CURRENT_VERSION" | grep -oP '^[A-Za-z]+')
-          MAJOR=$(echo "$CURRENT_VERSION" | grep -oP '[0-9]+' | head -1)
-          MINOR=$(echo "$CURRENT_VERSION" | grep -oP '\.[0-9]+$' | tr -d '.')
+          PREFIX=$(echo "$CURRENT_VERSION" | sed 's/[0-9].*//')
+          MAJOR=$(echo "$CURRENT_VERSION" | sed 's/^[^0-9]*//' | cut -d. -f1)
+          MINOR=$(echo "$CURRENT_VERSION" | sed 's/^[^0-9]*//' | cut -d. -f2)
 
-          # Bump minor version
           NEW_MINOR=$((MINOR + 1))
           NEW_VERSION="${PREFIX}${MAJOR}.${NEW_MINOR}"
           NEW_CODE=$((CURRENT_CODE + 1))
 
-          echo "current_version=${CURRENT_VERSION}" >> $GITHUB_ENV
           echo "new_version=${NEW_VERSION}" >> $GITHUB_ENV
           echo "new_code=${NEW_CODE}" >> $GITHUB_ENV
           echo "Version: ${CURRENT_VERSION} -> ${NEW_VERSION} (code: ${CURRENT_CODE} -> ${NEW_CODE})"
@@ -92,21 +85,18 @@ jobs:
           OWNER="${{ github.repository_owner }}"
           REPO="SetoSkins_Thermal"
 
-          # Get the download URL of the new release
+          # Get download URL from the new release
           DOWNLOAD_URL=$(gh release view "${{ env.new_version }}" --json assets \
             | jq -r '.assets[0].url')
 
-          # Update SetoSkins.json
-          cat > SetoSkins.json << EJSON
-          {
-            "version": "${{ env.new_version }}",
-            "versionCode": ${{ env.new_code }},
-            "zipUrl": "${DOWNLOAD_URL}",
-            "changelog": "https://raw.githubusercontent.com/${OWNER}/${REPO}/master/SetoSkins.md"
-          }
-          EJSON
-          # Fix indentation
-          jq . SetoSkins.json > tmp.json && mv tmp.json SetoSkins.json
+          # Write SetoSkins.json
+          jq -n \
+            --arg ver "${{ env.new_version }}" \
+            --argjson code "${{ env.new_code }}" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg cl "https://raw.githubusercontent.com/${OWNER}/${REPO}/master/SetoSkins.md" \
+            '{version: $ver, versionCode: $code, zipUrl: $url, changelog: $cl}' \
+            > SetoSkins.json
 
           git add SetoSkins.json
           if git commit -m "release: ${{ env.new_version }}"; then
@@ -125,7 +115,6 @@ jobs:
 
       - name: 7. Clean up old pre-releases
         run: |
-          # Delete pre-releases older than the one we just promoted
           gh release list --limit 50 --json tagName,isPrerelease \
             | jq -r '.[] | select(.isPrerelease == true) | .tagName' \
             | while read tag; do
