@@ -1,7 +1,7 @@
 id=SetoSkins
 name=Seto Thermal Control (色图温控)
-version=Z2.0
-versionCode=2000
+version=__VERSION__
+versionCode=__VERSIONCODE__
 author=SetoSkins Team (@SetoSkins @shadow3)
 description=Multi-function thermal control for MIUI/HyperOS | Supports Magisk, KernelSU, SukiSU
 updateJson=https://raw.githubusercontent.com/SetoSKins/SetoSkins_Thermal/master/SetoSkins.json

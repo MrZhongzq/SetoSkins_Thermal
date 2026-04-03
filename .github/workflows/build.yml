@@ -17,25 +17,32 @@ jobs:
       - name: 1. Prepare
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          BASE_VERSION=$(jq -r .version $GITHUB_WORKSPACE/SetoSkins.json)
+          BASE_CODE=$(jq -r .versionCode $GITHUB_WORKSPACE/SetoSkins.json)
+          DISPLAY_VERSION="${BASE_VERSION}-${SHORT_SHA}"
+
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_ENV
           echo "tag=pre-${SHORT_SHA}" >> $GITHUB_ENV
-          echo "version=$(jq -r .version $GITHUB_WORKSPACE/SetoSkins.json)" >> $GITHUB_ENV
-          echo "versionCode=$(jq -r .versionCode $GITHUB_WORKSPACE/SetoSkins.json)" >> $GITHUB_ENV
+          echo "display_version=${DISPLAY_VERSION}" >> $GITHUB_ENV
+          echo "base_code=${BASE_CODE}" >> $GITHUB_ENV
+          echo "zip_name=SetoSkins_Thermal_${DISPLAY_VERSION}.zip" >> $GITHUB_ENV
 
       - name: 2. Build module zip
         run: |
           mkdir -p "$GITHUB_WORKSPACE"/GithubRelease
-          # Write version info into module.prop
-          echo "version=${{ env.version }}-${{ env.short_sha }}" >> $GITHUB_WORKSPACE/SetoSkins/module.prop
-          echo "versionCode=${{ env.versionCode }}" >> $GITHUB_WORKSPACE/SetoSkins/module.prop
           cd $GITHUB_WORKSPACE/SetoSkins
+
+          # Inject version into module.prop and customize.sh
+          sed -i "s|__VERSION__|${{ env.display_version }}|g" module.prop
+          sed -i "s|__VERSIONCODE__|${{ env.base_code }}|g" module.prop
+          sed -i "s|__VERSION__|${{ env.display_version }}|g" customize.sh
+
           # Remove non-module files
-          rm -rf $GITHUB_WORKSPACE/SetoSkins/工口本
-          rm -rf $GITHUB_WORKSPACE/SetoSkins/system/SetoFastCharge.orig
+          rm -rf 工口本 system/SetoFastCharge.orig
           # Set executable permissions
           chmod 755 action.sh system/SetoFastCharge
-          zip -q -r SetoSkins_Thermal.zip *
-          mv SetoSkins_Thermal.zip "$GITHUB_WORKSPACE"/GithubRelease/
+          zip -q -r "${{ env.zip_name }}" *
+          mv "${{ env.zip_name }}" "$GITHUB_WORKSPACE"/GithubRelease/
 
       - name: 3. Delete old pre-release with same tag (if exists)
         run: |
@@ -53,9 +60,10 @@ jobs:
           body: |
             Automated pre-release build from commit `${{ github.sha }}`
 
-            **Commit message:** ${{ github.event.head_commit.message }}
+            **Version:** `${{ env.display_version }}`
+            **Commit:** ${{ github.event.head_commit.message }}
 
-            > This is a pre-release for testing. Use the "Promote Release" workflow to publish a stable release.
+            > This is a pre-release for testing. Use the **Promote Release** workflow to publish a stable release.
           prerelease: true
           makeLatest: false
           allowUpdates: true

@@ -82,7 +82,7 @@ fi
 # Changelog
 ##########################
 ui_print "—————————————————————————"
-ui_print "- Seto Thermal Z2.0"
+ui_print "- Seto Thermal __VERSION__"
 ui_print "- Now supports: Magisk / KernelSU / SukiSU"
 ui_print "- New: WebUI configuration interface"
 ui_print "- New: Hot-reload (no reboot needed)"
